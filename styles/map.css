@@ -78,10 +78,9 @@
 
 /* Favoris : bouton étoile à côté des lignes et bouton flottant */
 .fav-route-btn {
-    background: linear-gradient(#fff, #FFD600);
+    background: linear-gradient(#fff, #8a8988);
     border: none;
     padding: 0.25rem 0.6rem;
-    margin-left: 0.5rem;
     font-size: 1.1rem;
     border-radius: 8px;
     box-shadow: 0 6px 16px rgba(0,0,0,0.18);
@@ -91,6 +90,11 @@
     transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 .fav-route-btn:active { transform: translateY(2px); box-shadow: 0 3px 8px rgba(0,0,0,0.14); }
+
+/* SVG sizing and colors inside favorite buttons */
+.fav-route-btn svg { width: 18px; height: 18px; display: inline-block; vertical-align: middle; }
+.fav-route-btn .star-filled { color: #FFD600; }
+.fav-route-btn .star-outline { color: #6b6b6b; }
 
 #favorites-toggle {
     font-size: 1.6rem;
@@ -108,7 +112,55 @@
 #favorites-toggle:active { transform: translateY(2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 
 /* Make the star inside larger and centered when used inline */
+
 .bus-list .fav-route-btn { vertical-align: middle; }
+
+/* Ensure each line item shows the name and favorite button side-by-side */
+.line-item { display: flex; align-items: center; gap: 0.5rem; padding: 6px 0; }
+.line-item .bus-link { flex: 1; text-decoration: none; color: inherit; }
+
+/* Style for the dashed-route button shown in the stop info panel */
+.route-dashed-btn {
+    display: inline-block;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.95rem;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #ffffff 0%, #f3f6fb 100%);
+    color: #004085;
+    border: 2px dashed #007bff;
+    cursor: pointer;
+    box-shadow: 0 6px 14px rgba(3, 103, 171, 0.12);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+.route-dashed-btn:hover { transform: translateY(-2px); background: linear-gradient(180deg, #fff 0%, #e9f2ff 100%); }
+.route-dashed-btn:active { transform: translateY(1px); box-shadow: 0 3px 8px rgba(3,103,171,0.12); }
+
+/* When inside the info panel, ensure spacing from elements above */
+#info-panel .route-dashed-btn { margin-top: 8px; }
+
+/* Loading spinner used inside route buttons */
+.spinner { width: 16px; height: 16px; display: inline-block; border: 2px solid rgba(0,0,0,0.12); border-top-color: #007bff; border-radius: 50%; margin-right: 8px; vertical-align: middle; animation: spin 0.8s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.route-dashed-btn.loading { cursor: wait; opacity: 0.85; }
+
+/* Position controls bottom-right: favorites button and distance control side-by-side */
+#controls-bottom-right { position: absolute; right: 1rem; bottom: 1rem; z-index: 10000; display: flex; gap: 0.5rem; align-items: center; }
+.distance-control { position: relative; }
+
+/* Place the elements when not wrapped by a container (backwards compat) */
+#favorites-toggle { position: absolute; }
+.distance-control { position: absolute; }
+
+/* Actual placement: override positions to put them side-by-side bottom-right */
+#favorites-toggle { right: 1rem; bottom: 1rem; }
+.distance-control { right: calc(1rem + 54px); bottom: 1rem; width: 220px; }
+
+/* Mobile: stack vertically and align to right edge */
+@media (max-width: 480px) {
+    #favorites-toggle { right: 0.75rem; bottom: 0.75rem; }
+    .distance-control { right: 0.75rem; bottom: 4.5rem; width: 200px; }
+}
 .geo-btn2 {
     position: absolute;
     z-index:1000;

@@ -125,7 +125,7 @@ body {
 }
 
 form:has(:checked) div ~ button {
-  background: #FFD600;
+  background: #f2f240;
   color: #000C;
 }
 

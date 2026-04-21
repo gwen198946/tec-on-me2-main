@@ -42,12 +42,12 @@
 				</div>
 				<div id="info-panel" class="info-panel hidden"></div>
 					<!-- Controle du rayon de recherche (distance en km) -->
-					<div class="distance-control" style="position: absolute; z-index:10000; left:1rem; top:1rem; background: rgba(255,255,255,0.95); padding:0.5rem 0.75rem; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.12);">
-						<label style="font-size:0.9rem; display:block;">marche plus : <span id="distance-value">1 km</span></label>
+					<div class="distance-control" style="background: rgba(255,255,255,0.95); padding:0.5rem 0.75rem; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.12); z-index:10000;">
+						<label style="font-size:0.9rem; display:block;">Rayon : <span id="distance-value">1 km</span></label>
 						<input id="distance" type="range" min="0.2" max="5" step="0.1" value="1" />
 					</div>
 					<!-- Bouton favoris -->
-					<button id="favorites-toggle" class="geo-btn2" title="Favoris" style="top:6rem;">★</button>
+					<button id="favorites-toggle" class="geo-btn2" title="Favoris">★</button>
 
 					<!-- Panneau des favoris -->
 					<div id="favorites-panel" class="box hidden" style="width:300px; left:auto; right:1rem; top:4rem;">

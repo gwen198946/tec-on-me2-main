@@ -420,11 +420,18 @@ class Geo {
         if (data.code === "ok") {
             data.content.forEach(bus => {
                 if (bus.route_id) {
-                    const favMark = this._isFavoriteRoute(bus.shape_id) ? '★' : '☆';
+                    // SVGs for filled and outline star (small, inline)
+                    const starFilled = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-filled"><path fill="currentColor" d="M12 .587l3.668 7.431L24 9.748l-6 5.847 1.417 8.266L12 18.896 4.583 23.861 6 15.595 0 9.748l8.332-1.73z"/></svg>';
+                    const starOutline = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-outline"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+                    const isFav = this._isFavoriteRoute(bus.shape_id);
+
                     // store short and long names in data attributes to avoid HTML-escaping issues
                     const shortName = (bus.route_short_name || '').replace(/"/g, '&quot;');
                     const longName = (bus.route_long_name || '').replace(/"/g, '&quot;');
-                    busHtml += `<a href="#" class="bus-link" data-shape="${bus.shape_id}">${bus.route_short_name} - ${bus.route_long_name}</a> <button class="fav-route-btn" data-shape="${bus.shape_id}" data-short="${shortName}" data-long="${longName}">${favMark}</button><br>`;
+
+                    // Wrap in a flex container so the favorite button sits next to the line name
+                    const svgIcon = isFav ? starFilled : starOutline;
+                    busHtml += `<div class="line-item"><a href="#" class="bus-link" data-shape="${bus.shape_id}">${bus.route_short_name} - ${bus.route_long_name}</a><button class="fav-route-btn" data-shape="${bus.shape_id}" data-short="${shortName}" data-long="${longName}">${svgIcon}</button></div>`;
                 }
             });
         }
@@ -436,7 +443,7 @@ class Geo {
                 <h4>${stop.stop_name}</h4>
                 <hr>
                 <div class="bus-list">${busHtml}</div>
-                <button class="route-dashed-btn" data-lat="${stop.coordinates.lat}" data-lng="${stop.coordinates.lon}" style="margin-left:8px">Itinéraire pointillé (OSRM)</button>
+                <button class="route-dashed-btn" data-lat="${stop.coordinates.lat}" data-lng="${stop.coordinates.lon}">Itinéraire pointillé (OSRM)</button>
             `;
 
         // 3. Affichage (en retirant la classe hidden)
@@ -453,9 +460,23 @@ class Geo {
         const $routeDashedBtn = $panel.querySelector('.route-dashed-btn');
         if ($routeDashedBtn) {
             $routeDashedBtn.addEventListener('click', async (ev) => {
-                const lat = Number(ev.currentTarget.dataset.lat);
-                const lng = Number(ev.currentTarget.dataset.lng);
-                await this._routeToStop(lat, lng, { dashed: true, profile: 'foot' });
+                const btn = ev.currentTarget;
+                const lat = Number(btn.dataset.lat);
+                const lng = Number(btn.dataset.lng);
+
+                // disable and show spinner while calculating route
+                btn.disabled = true;
+                btn.classList.add('loading');
+                const origHtml = btn.innerHTML;
+                btn.innerHTML = '<span class="spinner" aria-hidden="true"></span>Calcul...';
+
+                try {
+                    await this._routeToStop(lat, lng, { dashed: true, profile: 'foot' });
+                } finally {
+                    btn.disabled = false;
+                    btn.classList.remove('loading');
+                    btn.innerHTML = origHtml;
+                }
             });
         }
 
@@ -468,7 +489,12 @@ class Geo {
                 const longN = e.currentTarget.dataset.long || '';
                 const name = (shortN && longN) ? `${shortN} - ${longN}` : (shortN || longN || shape);
                 this._toggleFavoriteRoute({ shape_id: shape, name });
-                e.currentTarget.textContent = this._isFavoriteRoute(shape) ? '★' : '☆';
+
+                // swap SVG inside the button according to new favorite state
+                const starFilled = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-filled"><path fill="currentColor" d="M12 .587l3.668 7.431L24 9.748l-6 5.847 1.417 8.266L12 18.896 4.583 23.861 6 15.595 0 9.748l8.332-1.73z"/></svg>';
+                const starOutline = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-outline"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+
+                e.currentTarget.innerHTML = this._isFavoriteRoute(shape) ? starFilled : starOutline;
                 // update favorites panel if open
                 this._renderFavoritesPanel();
             });
