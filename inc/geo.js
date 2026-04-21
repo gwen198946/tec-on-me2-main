@@ -443,7 +443,7 @@ class Geo {
                 <h4>${stop.stop_name}</h4>
                 <hr>
                 <div class="bus-list">${busHtml}</div>
-                <button class="route-dashed-btn" data-lat="${stop.coordinates.lat}" data-lng="${stop.coordinates.lon}">Itinéraire pointillé (OSRM)</button>
+                <button class="route-dashed-btn" data-lat="${stop.coordinates.lat}" data-lng="${stop.coordinates.lon}">Itinéraire a pied</button>
             `;
 
         // 3. Affichage (en retirant la classe hidden)
