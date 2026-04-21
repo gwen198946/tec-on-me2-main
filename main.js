@@ -16,6 +16,25 @@ const myGeo = new Geo($mapBox)
 myGeo.init()
 // Gestion du curseur de distance
 const $distanceRange = document.querySelector('#distance');
+const $distanceValue = document.querySelector('#distance-value');
+
+// Initialise l'affichage du slider si présent
+if ($distanceRange) {
+	// Valeur initiale depuis l'objet Geo
+	$distanceRange.value = myGeo.distance;
+	if ($distanceValue) $distanceValue.textContent = `${Number(myGeo.distance).toFixed(1)} km`;
+
+	// Quand l'utilisateur déplace le slider, on change la distance et recharge les arrêts
+	$distanceRange.addEventListener('input', (e) => {
+		const km = Number(e.target.value);
+		myGeo.setDistance(km);
+		if ($distanceValue) $distanceValue.textContent = `${km.toFixed(1)} km`;
+
+		// Recharge autour de la dernière position connue, sinon autour du centre de la carte
+		const pos = myGeo.lastPosition || (myGeo.map ? { coords: { latitude: myGeo.map.getCenter().lat, longitude: myGeo.map.getCenter().lng } } : null);
+		if (pos) myGeo.loadStops(pos);
+	});
+}
 
 
 
