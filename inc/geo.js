@@ -34,6 +34,8 @@ class Geo {
         this.layers = {
             stops: L.layerGroup(),   // Pour les icônes d'arrêts de bus
             route: L.layerGroup(),   // Pour le tracé rouge du bus
+            walking: L.layerGroup(), // Pour le tracé piéton/itinéraire vers un arrêt (solide)
+            walkingDotted: L.layerGroup(), // Pour le tracé pointillé (OSRM)
         };
         this.activeMarker = null; // Pour stocker le marqueur de la position cliquée (si besoin)
 
@@ -59,6 +61,83 @@ class Geo {
         
         // On lance la préparation des images des marqueurs
         this._initIcons();
+    }
+
+    /**
+     * Trace un itinéraire vers destLat/destLon via OSRM.
+     * options: { dashed: boolean, profile: 'driving'|'foot'|'cycling' }
+     */
+    async _routeToStop(destLat, destLon, options = {}) {
+        const dashed = Boolean(options.dashed);
+        let profile = options.profile || 'driving';
+
+        // Choisit la couche selon dashed
+        const layer = dashed ? this.layers.walkingDotted : this.layers.walking;
+        if (!layer) return;
+
+        // Clear the chosen layer before drawing
+        layer.clearLayers();
+
+        // Determine start position
+        const start = this.lastPosition ? { lat: this.lastPosition.coords.latitude, lon: this.lastPosition.coords.longitude } : (this.map ? { lat: this.map.getCenter().lat, lon: this.map.getCenter().lng } : null);
+        if (!start) return;
+
+        const startLng = start.lon;
+        const startLat = start.lat;
+
+        // Prepare panel info
+        const $panel = document.querySelector('#info-panel');
+        const $routeInfo = $panel ? ($panel.querySelector('.route-info') || (() => { const n = document.createElement('div'); n.className='route-info'; n.style.marginTop='8px'; n.style.color='#333'; $panel.appendChild(n); return n; })()) : null;
+        if ($routeInfo) $routeInfo.textContent = 'Calcul de l\'itinéraire...';
+
+        // Try requested profile, fallback to driving if no route (public OSRM may not support foot)
+        const tryProfile = async (p) => {
+            const url = `https://router.project-osrm.org/route/v1/${p}/${startLng},${startLat};${destLon},${destLat}?overview=full&geometries=geojson&alternatives=false&steps=false`;
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                return data;
+            } catch (err) {
+                console.warn('OSRM request failed for profile', p, err);
+                return null;
+            }
+        };
+
+        let data = await tryProfile(profile);
+        if ((!data || !data.routes || data.routes.length === 0) && profile !== 'driving') {
+            // fallback
+            data = await tryProfile('driving');
+            profile = 'driving';
+        }
+
+        if (!data || !data.routes || data.routes.length === 0) {
+            if ($routeInfo) $routeInfo.textContent = 'Aucun itinéraire trouvé.';
+            return;
+        }
+
+        const route = data.routes[0];
+        const geojson = route.geometry;
+
+        // Style: dashed or solid
+        const style = dashed ? { color: '#007bff', weight: 4, opacity: 0.9, dashArray: '8 8' } : { color: '#007bff', weight: 5, opacity: 0.9 };
+
+        const routeLayer = L.geoJSON(geojson, { style });
+        routeLayer.addTo(layer);
+
+        // Markers on same layer
+        L.marker([startLat, startLng], { icon: this.icons.user }).addTo(layer);
+        L.marker([destLat, destLon], { icon: this.icons.end }).addTo(layer);
+
+        // Fit bounds
+        try { this.map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] }); } catch (err) { /* ignore */ }
+
+        // Show distance/duration
+        if ($routeInfo) {
+            const distKm = (route.distance / 1000).toFixed(2);
+            const durMin = Math.round(route.duration / 60);
+            $routeInfo.textContent = `Distance: ${distKm} km — Durée estimée: ${durMin} min (profil: ${profile})`;
+        }
     }
 
     /**
@@ -143,6 +222,8 @@ class Geo {
         // On active nos "tiroirs" (calques) sur la carte
         this.layers.stops.addTo(this.map);
         this.layers.route.addTo(this.map);
+        this.layers.walking.addTo(this.map);
+        this.layers.walkingDotted.addTo(this.map);
 
         // Marqueur fixe pour notre position initiale
         L.marker([latitude, longitude], { icon: this.icons.user }).addTo(this.map);
@@ -243,12 +324,13 @@ class Geo {
 
         // 2. Préparation du contenu du panneau
         const $panel = document.querySelector('#info-panel');
-        $panel.innerHTML = `
-            <span class="close-panel">&times;</span>
-            <h4>${stop.stop_name}</h4>
-            <hr>
-            <div class="bus-list">${busHtml}</div>
-        `;
+            $panel.innerHTML = `
+                <span class="close-panel">&times;</span>
+                <h4>${stop.stop_name}</h4>
+                <hr>
+                <div class="bus-list">${busHtml}</div>
+                <button class="route-dashed-btn" data-lat="${stop.coordinates.lat}" data-lng="${stop.coordinates.lon}" style="margin-left:8px">Itinéraire pointillé (OSRM)</button>
+            `;
 
         // 3. Affichage (en retirant la classe hidden)
         $panel.classList.remove('hidden');
@@ -256,8 +338,19 @@ class Geo {
         // 4. Gestion de la fermeture
         $panel.querySelector('.close-panel').addEventListener('click', () => {
             $panel.classList.add('hidden');
-            this.layers.walking.clearLayers(); // On efface le tracé bleu aussi
+            if (this.layers.walking) this.layers.walking.clearLayers(); // On efface le tracé bleu aussi
+            if (this.layers.walkingDotted) this.layers.walkingDotted.clearLayers(); // On efface le tracé pointillé aussi
         });
+
+        // 5. Bouton itinéraire pointillé -> appelle OSRM et trace en pointillé
+        const $routeDashedBtn = $panel.querySelector('.route-dashed-btn');
+        if ($routeDashedBtn) {
+            $routeDashedBtn.addEventListener('click', async (ev) => {
+                const lat = Number(ev.currentTarget.dataset.lat);
+                const lng = Number(ev.currentTarget.dataset.lng);
+                await this._routeToStop(lat, lng, { dashed: true, profile: 'foot' });
+            });
+        }
     });
 }
 
