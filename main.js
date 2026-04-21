@@ -4,6 +4,7 @@ import {Geo} from './inc/geo.js'
 
 //gestion des fermetures des boxes
 import boxClose from './inc/box.js'
+import installApp from './inc/install.js'
 //lance le process d'installation de l'app
 
 // end install
@@ -17,6 +18,10 @@ myGeo.init()
 const $distanceRange = document.querySelector('#distance');
 
 
+
+// délenche la gestion de fermetures des boxes
+// Initialise le flow d'installation (PWA) si disponible
+installApp()
 
 // délenche la gestion de fermetures des boxes
 boxClose()

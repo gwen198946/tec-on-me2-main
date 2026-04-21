@@ -1,0 +1,35 @@
+{
+  "name": "Tec on Me",
+  "short_name": "TecOnMe",
+  "description": "Application pour trouver les arrêts de bus TEC autour de vous.",
+  "start_url": "/carte.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFFFF",
+  "theme_color": "#B12A34",
+  "icons": [
+    {
+      "src": "/icons/favicon-256x256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/favicon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    { "src": "/icons/screenshot.png", "sizes": "1024x512", "type": "image/png" },
+    { "src": "/icons/screenshot-mobile.png", "sizes": "540x960", "type": "image/png" }
+  ]
+}

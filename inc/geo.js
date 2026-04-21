@@ -149,6 +149,28 @@ class Geo {
 
         // On charge les arrêts autour de nous
         this.loadStops(position);
+
+        // --- CLIC SUR LA CARTE : ajout d'un "ping", affichage des coordonnées et recherche des arrêts ---
+        // Quand l'utilisateur clique sur la carte, on place/replace un marqueur, on ouvre une popup
+        // avec les coordonnées et on appelle loadStops avec la position cliquée.
+        this.map.on('click', (e) => {
+            const { lat, lng } = e.latlng;
+
+            // Supprime l'ancien ping si nécessaire
+            if (this._clickMarker) {
+                try { this.map.removeLayer(this._clickMarker); } catch (err) { /* ignore */ }
+            }
+
+            // Création d'un marqueur "ping" (utilise l'icône start pour le rendre visible)
+            this._clickMarker = L.marker([lat, lng], { icon: this.icons.start }).addTo(this.map);
+
+            // Affiche les coordonnées dans une popup lisible
+            const popupHtml = `<strong>Coordonnées</strong><br>Lat : ${lat.toFixed(6)}<br>Lng : ${lng.toFixed(6)}`;
+            this._clickMarker.bindPopup(popupHtml).openPopup();
+
+            // Appel de loadStops en réutilisant le format attendu (objet position avec coords)
+            this.loadStops({ coords: { latitude: lat, longitude: lng } }, true);
+        });
     }
 
     /**
