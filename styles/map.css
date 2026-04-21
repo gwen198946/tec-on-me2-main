@@ -75,6 +75,40 @@
     border-radius: 16px;
     margin-top: 1rem;
 }
+
+/* Favoris : bouton étoile à côté des lignes et bouton flottant */
+.fav-route-btn {
+    background: linear-gradient(#fff, #FFD600);
+    border: none;
+    padding: 0.25rem 0.6rem;
+    margin-left: 0.5rem;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+    cursor: pointer;
+    line-height: 1;
+    color: #222;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.fav-route-btn:active { transform: translateY(2px); box-shadow: 0 3px 8px rgba(0,0,0,0.14); }
+
+#favorites-toggle {
+    font-size: 1.6rem;
+    background: linear-gradient(#fff, #f8f8f8);
+    border: none;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.22);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#favorites-toggle:active { transform: translateY(2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+
+/* Make the star inside larger and centered when used inline */
+.bus-list .fav-route-btn { vertical-align: middle; }
 .geo-btn2 {
     position: absolute;
     z-index:1000;

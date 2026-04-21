@@ -37,7 +37,10 @@ class Geo {
             walking: L.layerGroup(), // Pour le tracé piéton/itinéraire vers un arrêt (solide)
             walkingDotted: L.layerGroup(), // Pour le tracé pointillé (OSRM)
         };
-        this.activeMarker = null; // Pour stocker le marqueur de la position cliquée (si besoin)
+    this.activeMarker = null; // Pour stocker le marqueur de la position cliquée (si besoin)
+
+    // Favoris (routes/stops) stockés en localStorage
+    this.favorites = this._loadFavorites();
 
         // Écouteur global pour les lignes de bus (Délégation d'événement)
         // On écoute la zone de la carte : si on clique sur un lien avec la classe 'bus-link', on trace la ligne.
@@ -159,6 +162,91 @@ class Geo {
         };
     }
 
+    /* ---------- FAVORITES (localStorage) ---------- */
+    _loadFavorites() {
+        try {
+            const raw = localStorage.getItem('tec_favorites');
+            return raw ? JSON.parse(raw) : [];
+        } catch (err) {
+            return [];
+        }
+    }
+
+    _saveFavorites() {
+        try {
+            localStorage.setItem('tec_favorites', JSON.stringify(this.favorites || []));
+        } catch (err) { console.warn('Saving favorites failed', err); }
+    }
+
+    _isFavoriteRoute(shapeId) {
+        return (this.favorites || []).some(f => f.type === 'route' && String(f.shape_id) === String(shapeId));
+    }
+
+    _toggleFavoriteRoute(route) {
+        // route: { shape_id, name }
+        const idx = (this.favorites || []).findIndex(f => f.type === 'route' && String(f.shape_id) === String(route.shape_id));
+        if (idx >= 0) {
+            this.favorites.splice(idx, 1);
+        } else {
+            (this.favorites = this.favorites || []).push({ type: 'route', shape_id: route.shape_id, name: route.name });
+        }
+        this._saveFavorites();
+    }
+
+    _renderFavoritesPanel() {
+        const $panel = document.getElementById('favorites-panel');
+        const $list = document.getElementById('favorites-list');
+        if (!$panel || !$list) return;
+
+        // build list
+        $list.innerHTML = '';
+        (this.favorites || []).forEach((f, i) => {
+            if (f.type === 'route') {
+                const el = document.createElement('div');
+                el.style.display = 'flex';
+                el.style.justifyContent = 'space-between';
+                el.style.alignItems = 'center';
+                el.style.padding = '6px 0';
+                el.innerHTML = `<div style="flex:1">${f.name || f.shape_id}</div>
+                    <div style="margin-left:8px"><button class="fav-draw" data-index="${i}">Voir</button> <button class="fav-remove" data-index="${i}">✖</button></div>`;
+                $list.appendChild(el);
+            }
+        });
+
+        // attach handlers
+        $list.querySelectorAll('.fav-draw').forEach(btn => btn.addEventListener('click', (e) => {
+            const idx = Number(e.currentTarget.dataset.index);
+            const fav = this.favorites[idx];
+            if (fav && fav.type === 'route') {
+                // draw the route by shape id using existing drawRoute function if possible
+                if (fav.shape_id) this.drawRoute(fav.shape_id);
+            }
+        }));
+
+        $list.querySelectorAll('.fav-remove').forEach(btn => btn.addEventListener('click', (e) => {
+            const idx = Number(e.currentTarget.dataset.index);
+            this.favorites.splice(idx, 1);
+            this._saveFavorites();
+            this._renderFavoritesPanel();
+        }));
+
+        // add form handler
+        const $addBtn = document.getElementById('fav-add-btn');
+        if ($addBtn) {
+            $addBtn.onclick = () => {
+                const sid = document.getElementById('fav-shape-id').value.trim();
+                const name = document.getElementById('fav-shape-name').value.trim() || sid;
+                if (!sid) return alert('Entrez un shape_id');
+                this.favorites = this.favorites || [];
+                this.favorites.push({ type: 'route', shape_id: sid, name });
+                this._saveFavorites();
+                document.getElementById('fav-shape-id').value = '';
+                document.getElementById('fav-shape-name').value = '';
+                this._renderFavoritesPanel();
+            };
+        }
+    }
+
     /**
      * 3. SYSTÈME DE GÉOLOCALISATION
      * Gère la demande d'autorisation et récupère la position de l'utilisateur.
@@ -252,6 +340,21 @@ class Geo {
             // Appel de loadStops en réutilisant le format attendu (objet position avec coords)
             this.loadStops({ coords: { latitude: lat, longitude: lng } }, true);
         });
+
+        // Favorites panel toggle
+        const favToggle = document.getElementById('favorites-toggle');
+        const favPanel = document.getElementById('favorites-panel');
+        if (favToggle && favPanel) {
+            favToggle.addEventListener('click', () => {
+                favPanel.classList.toggle('hidden');
+                // render content
+                this._renderFavoritesPanel();
+            });
+
+            // close button inside panel
+            const closeBtn = favPanel.querySelector('.cross.close');
+            if (closeBtn) closeBtn.addEventListener('click', () => favPanel.classList.add('hidden'));
+        }
     }
 
     /**
@@ -317,7 +420,11 @@ class Geo {
         if (data.code === "ok") {
             data.content.forEach(bus => {
                 if (bus.route_id) {
-                    busHtml += `<a href="#" class="bus-link" data-shape="${bus.shape_id}">${bus.route_short_name} - ${bus.route_long_name}</a><br>`;
+                    const favMark = this._isFavoriteRoute(bus.shape_id) ? '★' : '☆';
+                    // store short and long names in data attributes to avoid HTML-escaping issues
+                    const shortName = (bus.route_short_name || '').replace(/"/g, '&quot;');
+                    const longName = (bus.route_long_name || '').replace(/"/g, '&quot;');
+                    busHtml += `<a href="#" class="bus-link" data-shape="${bus.shape_id}">${bus.route_short_name} - ${bus.route_long_name}</a> <button class="fav-route-btn" data-shape="${bus.shape_id}" data-short="${shortName}" data-long="${longName}">${favMark}</button><br>`;
                 }
             });
         }
@@ -351,6 +458,21 @@ class Geo {
                 await this._routeToStop(lat, lng, { dashed: true, profile: 'foot' });
             });
         }
+
+        // favorite buttons next to each bus link
+        $panel.querySelectorAll('.fav-route-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const shape = e.currentTarget.dataset.shape;
+                const shortN = e.currentTarget.dataset.short || '';
+                const longN = e.currentTarget.dataset.long || '';
+                const name = (shortN && longN) ? `${shortN} - ${longN}` : (shortN || longN || shape);
+                this._toggleFavoriteRoute({ shape_id: shape, name });
+                e.currentTarget.textContent = this._isFavoriteRoute(shape) ? '★' : '☆';
+                // update favorites panel if open
+                this._renderFavoritesPanel();
+            });
+        });
     });
 }
 

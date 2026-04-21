@@ -46,6 +46,22 @@
 						<label style="font-size:0.9rem; display:block;">marche plus : <span id="distance-value">1 km</span></label>
 						<input id="distance" type="range" min="0.2" max="5" step="0.1" value="1" />
 					</div>
+					<!-- Bouton favoris -->
+					<button id="favorites-toggle" class="geo-btn2" title="Favoris" style="top:6rem;">★</button>
+
+					<!-- Panneau des favoris -->
+					<div id="favorites-panel" class="box hidden" style="width:300px; left:auto; right:1rem; top:4rem;">
+						<span class="cross close">×</span>
+						<div class="box-content" style="display:block;">
+							<h4>Mes favoris</h4>
+							<div id="favorites-list" style="max-height:300px; overflow:auto; margin-top:8px"></div>
+							<hr />
+							<label style="font-size:0.9rem">Ajouter par shape id :</label>
+							<input id="fav-shape-id" placeholder="shape_id" style="width:100%; box-sizing:border-box; margin-top:6px" />
+							<input id="fav-shape-name" placeholder="Nom (ex: 12 - Centre)" style="width:100%; box-sizing:border-box; margin-top:6px" />
+							<button id="fav-add-btn" style="margin-top:8px">Ajouter</button>
+						</div>
+					</div>
 					<div id="map"></div>
 			</div>
 		</main>
