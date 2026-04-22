@@ -1,14 +1,3 @@
-
-/**
- * =============================================================================
- * TABLE DES MATIÈRES
- * =============================================================================
- * 1. CONSTRUCTEUR & CONFIGURATION ........ Initialisation et état global
- * 2. GESTION DES ICÔNES .................. Création des marqueurs personnalisés
-
-message.txt
-38 Ko
-﻿
 /**
  * =============================================================================
  * TABLE DES MATIÈRES
@@ -30,15 +19,15 @@ class Geo {
     constructor($mapBox) {
         // L'adresse de notre serveur qui contient les données des lignes de bus
         this.urlApi = 'https://cepegra-frontend.xyz/bootcamp';
-        
+
         // Références aux éléments HTML (la div de la carte et le bouton)
         this.$mapBox = $mapBox;
-        
+
         // État de l'application : on stocke la carte et la distance de recherche
         this.map = null;          // Contiendra l'objet Leaflet une fois créé
         this.distance = 1;        // Rayon de recherche par défaut (1km)
         this.lastPosition = null; // Stocke les dernières coordonnées pour les calculs
-        
+
         // --- LES CALQUES (LAYER GROUPS) ---
         // On crée des "tiroirs" pour ranger nos éléments.
         // Cela permet de vider un tiroir (ex: les arrêts) sans effacer la carte elle-même.
@@ -56,19 +45,19 @@ class Geo {
         this.lastLoadedPosition = null; // Dernière position où on a chargé les arrêts
         this.loadStopsThreshold = 0.05; // Seuil en km pour recharger les arrêts (50m)
 
-    // Favoris (routes/stops) stockés en localStorage
-    this.favorites = this._loadFavorites();        // Écouteur global pour les lignes de bus (Délégation d'événement)
+        // Favoris (routes/stops) stockés en localStorage
+        this.favorites = this._loadFavorites();        // Écouteur global pour les lignes de bus (Délégation d'événement)
         // On écoute la zone de la carte : si on clique sur un lien avec la classe 'bus-link', on trace la ligne.
         // Remplace ton ancien écouteur par celui-ci :
         document.addEventListener('click', (e) => {
             // On vérifie si l'élément cliqué (ou l'un de ses parents) est un lien de bus
             const busLink = e.target.closest('.bus-link');
-            
+
             if (busLink) {
                 e.preventDefault();
                 console.log("Chargement de la ligne :", busLink.dataset.shape);
-                this.drawRoute(busLink.dataset.shape);
-                
+                this.drawRouteWithStops(busLink.dataset.shape);
+
                 // Optionnel : On peut fermer le panneau quand on clique sur une ligne
                 // document.querySelector('#info-panel').classList.add('hidden');
             }
@@ -76,7 +65,7 @@ class Geo {
 
         // Options pour la précision du GPS
         this.optionsMap = { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 };
-        
+
         // On lance la préparation des images des marqueurs
         this._initIcons();
     }
@@ -105,7 +94,7 @@ class Geo {
 
         // Prepare panel info
         const $panel = document.querySelector('#info-panel');
-        const $routeInfo = $panel ? ($panel.querySelector('.route-info') || (() => { const n = document.createElement('div'); n.className='route-info'; n.style.marginTop='8px'; n.style.color='#333'; $panel.appendChild(n); return n; })()) : null;
+        const $routeInfo = $panel ? ($panel.querySelector('.route-info') || (() => { const n = document.createElement('div'); n.className = 'route-info'; n.style.marginTop = '8px'; n.style.color = '#333'; $panel.appendChild(n); return n; })()) : null;
         if ($routeInfo) $routeInfo.textContent = 'Calcul de l\'itinéraire...';
 
         // Try requested profile, fallback to driving if no route (public OSRM may not support foot)
@@ -164,9 +153,9 @@ class Geo {
      */
     _initIcons() {
         const configCommune = {
-            iconSize: [53, 53],    // Taille de l'image en pixels
-            iconAnchor: [26, 53],  // Le point de l'image qui "touche" la coordonnée (le bas milieu)
-            popupAnchor: [0, -50]  // Où la bulle d'info s'affiche par rapport au marqueur
+            iconSize: [53, 53],        // Taille de l'image en pixels
+            iconAnchor: [26, 53],      // Le point de l'image qui "touche" la coordonnée (le bas milieu)
+            popupAnchor: [0, -50]      // Où la bulle d'info s'affiche par rapport au marqueur
         };
 
         this.icons = {
@@ -271,7 +260,7 @@ class Geo {
         try {
             // On vérifie si l'utilisateur a déjà donné sa permission
             const result = await navigator.permissions.query({ name: 'geolocation' });
-            
+
             if (result.state === 'granted' || result.state === 'prompt') {
                 // Première position avec getCurrentPosition pour créer la carte rapidement
                 navigator.geolocation.getCurrentPosition(
@@ -283,7 +272,10 @@ class Geo {
                         this._startWatchingPosition();
                     },
                     (err) => {
+                        console.warn(`Erreur GPS (${err.code}): ${err.message}`);
                         this.errorPosition(err); // Erreur
+                        // Fallback si le GPS échoue
+                        this._fallbackPosition();
                         // Lance le watching même en cas d'erreur pour une seconde tentative
                         this._startWatchingPosition();
                     },
@@ -296,6 +288,7 @@ class Geo {
                 this._startWatchingPosition();
             }
         } catch (error) {
+            console.error('Erreur lors de la vérification des permissions:', error);
             this._fallbackPosition();
             this._startWatchingPosition();
         }
@@ -345,7 +338,7 @@ class Geo {
         // 1. Créer ou mettre à jour le marqueur utilisateur
         if (!this.userMarker) {
             // Première fois : créer le marqueur
-            this.userMarker = L.marker([latitude, longitude], { 
+            this.userMarker = L.marker([latitude, longitude], {
                 icon: this.icons.user,
                 title: 'Ma position'
             }).addTo(this.map);
@@ -368,9 +361,9 @@ class Geo {
             console.log('Premiers arrêts chargés');
         } else {
             const distance = this._calculateDistance(
-                this.lastLoadedPosition.lat, 
-                this.lastLoadedPosition.lng, 
-                latitude, 
+                this.lastLoadedPosition.lat,
+                this.lastLoadedPosition.lng,
+                latitude,
                 longitude
             );
 
@@ -391,8 +384,8 @@ class Geo {
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
         const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     }
@@ -448,7 +441,16 @@ class Geo {
 
         // On affiche la zone de la carte et on initialise Leaflet centrée sur nous
         this.$mapBox.classList.remove('hidde');
-        this.map = L.map(this.$mapBox).setView([latitude, longitude], 17);
+        
+        // Utiliser new L.Map() pour accéder aux fonctionnalités du plugin leaflet-rotate
+        this.map = new L.Map(this.$mapBox, {
+            center: L.latLng(latitude, longitude),
+            zoom: 17,
+            rotate: true,
+            touchRotate: true,
+            rotateControl: true,
+            bearing: 0
+        });
 
         // On ajoute le "fond de carte" (les images des rues)
         L.tileLayer("https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=f5a6d9a8d3484637b41037978e6e1e7b", {
@@ -514,16 +516,16 @@ class Geo {
      */
     async loadStops(position, showClickMarker = false) {
         this.lastPosition = position; // Sauvegarde pour les calculs d'itinéraires piétons
-        
+
         // Nettoyage avant de charger de nouveaux points
         this.layers.stops.clearLayers();
-        
+
         const { latitude, longitude } = position.coords;
 
         try {
             // URL complexe qui demande : "donne moi les arrêts dans un rayon de X km autour de ce point"
             const url = `https://www.odwb.be/api/explore/v2.1/catalog/datasets/le-tec-arrets-bus/records?limit=100&where=within_distance(coordinates, geom'POINT(${longitude} ${latitude})', ${this.distance}km)&order_by=distance(coordinates, geom'POINT(${longitude} ${latitude})')`;
-            
+
             const response = await fetch(url);
             const data = await response.json();
 
@@ -544,51 +546,51 @@ class Geo {
      * Crée physiquement les icônes d'arrêts et gère le contenu de la bulle d'info.
      */
     _renderStopMarker(stop) {
-    const stopPos = L.latLng(stop.coordinates.lat, stop.coordinates.lon);
-    const userPos = L.latLng(this.lastPosition.coords.latitude, this.lastPosition.coords.longitude);
-    const distance = userPos.distanceTo(stopPos);
-    const distText = distance > 1000 ? (distance / 1000).toFixed(1) + " km" : Math.round(distance) + " m";
+        const stopPos = L.latLng(stop.coordinates.lat, stop.coordinates.lon);
+        const userPos = L.latLng(this.lastPosition.coords.latitude, this.lastPosition.coords.longitude);
+        const distance = userPos.distanceTo(stopPos);
+        const distText = distance > 1000 ? (distance / 1000).toFixed(1) + " km" : Math.round(distance) + " m";
 
-    const marker = L.marker([stop.coordinates.lat, stop.coordinates.lon], { icon: this.icons.stop })
-        .addTo(this.layers.stops);
+        const marker = L.marker([stop.coordinates.lat, stop.coordinates.lon], { icon: this.icons.stop })
+            .addTo(this.layers.stops);
 
-    marker.on('click', async () => {
-        // Si un autre marqueur était actif, on lui retire la classe
-        if (this.activeMarker && this.activeMarker._icon) {
-            this.activeMarker._icon.classList.remove('marker-active');
-        }
+        marker.on('click', async () => {
+            // Si un autre marqueur était actif, on lui retire la classe
+            if (this.activeMarker && this.activeMarker._icon) {
+                this.activeMarker._icon.classList.remove('marker-active');
+            }
 
-        // On ajoute la classe au marqueur actuel
-        marker._icon.classList.add('marker-active');
-        
-        // On mémorise que c'est lui le nouveau "chef"
-        this.activeMarker = marker;
-        // 1. Récupération des bus qui passent par l'arrêt (via notre API)
-        const response = await fetch(`${this.urlApi}/bus/${stop.stop_name}/${stop.coordinates.lon}`);
-        const data = await response.json();
-        
-        let busHtml = "";
-        if (data.code === "ok") {
-            data.content.forEach(bus => {
-                if (bus.route_id) {
-                    // SVGs for filled and outline star (small, inline)
-                    const starFilled = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-filled"><path fill="currentColor" d="M12 .587l3.668 7.431L24 9.748l-6 5.847 1.417 8.266L12 18.896 4.583 23.861 6 15.595 0 9.748l8.332-1.73z"/></svg>';
-                    const starOutline = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-outline"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
-                    const isFav = this._isFavoriteRoute(bus.shape_id);
+            // On ajoute la classe au marqueur actuel
+            marker._icon.classList.add('marker-active');
 
-                    // store short and long names in data attributes to avoid HTML-escaping issues
-                    const shortName = (bus.route_short_name || '').replace(/"/g, '&quot;');
-                    const longName = (bus.route_long_name || '').replace(/"/g, '&quot;');
+            // On mémorise que c'est lui le nouveau "chef"
+            this.activeMarker = marker;
+            // 1. Récupération des bus qui passent par l'arrêt (via notre API)
+            const response = await fetch(`${this.urlApi}/bus/${stop.stop_name}/${stop.coordinates.lon}`);
+            const data = await response.json();
 
-                    // Wrap in a flex container so the favorite button sits next to the line name
-                    const svgIcon = isFav ? starFilled : starOutline;
-                    busHtml += `<div class="line-item"><a href="#" class="bus-link" data-shape="${bus.shape_id}">${bus.route_short_name} - ${bus.route_long_name}</a><button class="fav-route-btn" data-shape="${bus.shape_id}" data-short="${shortName}" data-long="${longName}">${svgIcon}</button></div>`;
-                }
-            });
-        }
+            let busHtml = "";
+            if (data.code === "ok") {
+                data.content.forEach(bus => {
+                    if (bus.route_id) {
+                        // SVGs for filled and outline star (small, inline)
+                        const starFilled = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-filled"><path fill="currentColor" d="M12 .587l3.668 7.431L24 9.748l-6 5.847 1.417 8.266L12 18.896 4.583 23.861 6 15.595 0 9.748l8.332-1.73z"/></svg>';
+                        const starOutline = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-outline"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+                        const isFav = this._isFavoriteRoute(bus.shape_id);
 
-        // 2. Préparation du contenu du panneau
-        const $panel = document.querySelector('#info-panel');
+                        // store short and long names in data attributes to avoid HTML-escaping issues
+                        const shortName = (bus.route_short_name || '').replace(/"/g, '&quot;');
+                        const longName = (bus.route_long_name || '').replace(/"/g, '&quot;');
+
+                        // Wrap in a flex container so the favorite button sits next to the line name
+                        const svgIcon = isFav ? starFilled : starOutline;
+                        busHtml += `<div class="line-item"><a href="#" class="bus-link" data-shape="${bus.shape_id}">${bus.route_short_name} - ${bus.route_long_name}</a><button class="fav-route-btn" data-shape="${bus.shape_id}" data-short="${shortName}" data-long="${longName}">${svgIcon}</button></div>`;
+                    }
+                });
+            }
+
+            // 2. Préparation du contenu du panneau
+            const $panel = document.querySelector('#info-panel');
             $panel.innerHTML = `
                 <span class="close-panel">&times;</span>
                 <h4>${stop.stop_name}</h4>
@@ -597,64 +599,64 @@ class Geo {
                 <button class="route-dashed-btn" data-lat="${stop.coordinates.lat}" data-lng="${stop.coordinates.lon}">Itinéraire a pied</button>
             `;
 
-        // 3. Affichage (en retirant la classe hidden)
-        $panel.classList.remove('hidden');
+            // 3. Affichage (en retirant la classe hidden)
+            $panel.classList.remove('hidden');
 
-        // 4. Gestion de la fermeture
-        $panel.querySelector('.close-panel').addEventListener('click', () => {
-            $panel.classList.add('hidden');
-            if (this.layers.walking) this.layers.walking.clearLayers(); // On efface le tracé bleu aussi
-            if (this.layers.walkingDotted) this.layers.walkingDotted.clearLayers(); // On efface le tracé pointillé aussi
-        });
-
-        // 5. Bouton itinéraire pointillé -> appelle OSRM et trace en pointillé
-        const $routeDashedBtn = $panel.querySelector('.route-dashed-btn');
-        if ($routeDashedBtn) {
-            $routeDashedBtn.addEventListener('click', async (ev) => {
-                const btn = ev.currentTarget;
-                const lat = Number(btn.dataset.lat);
-                const lng = Number(btn.dataset.lng);
-
-                // disable and show spinner while calculating route
-                btn.disabled = true;
-                btn.classList.add('loading');
-                const origHtml = btn.innerHTML;
-                btn.innerHTML = '<span class="spinner" aria-hidden="true"></span>Calcul...';
-
-                try {
-                    await this._routeToStop(lat, lng, { dashed: true, profile: 'foot' });
-                } finally {
-                    btn.disabled = false;
-                    btn.classList.remove('loading');
-                    btn.innerHTML = origHtml;
-                }
+            // 4. Gestion de la fermeture
+            $panel.querySelector('.close-panel').addEventListener('click', () => {
+                $panel.classList.add('hidden');
+                if (this.layers.walking) this.layers.walking.clearLayers(); // On efface le tracé bleu aussi
+                if (this.layers.walkingDotted) this.layers.walkingDotted.clearLayers(); // On efface le tracé pointillé aussi
             });
-        }
 
-        // favorite buttons next to each bus link
-        $panel.querySelectorAll('.fav-route-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const shape = e.currentTarget.dataset.shape;
-                const shortN = e.currentTarget.dataset.short || '';
-                const longN = e.currentTarget.dataset.long || '';
-                const name = (shortN && longN) ? `${shortN} - ${longN}` : (shortN || longN || shape);
-                this._toggleFavoriteRoute({ shape_id: shape, name });
+            // 5. Bouton itinéraire pointillé -> appelle OSRM et trace en pointillé
+            const $routeDashedBtn = $panel.querySelector('.route-dashed-btn');
+            if ($routeDashedBtn) {
+                $routeDashedBtn.addEventListener('click', async (ev) => {
+                    const btn = ev.currentTarget;
+                    const lat = Number(btn.dataset.lat);
+                    const lng = Number(btn.dataset.lng);
 
-                // swap SVG inside the button according to new favorite state
-                const starFilled = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-filled"><path fill="currentColor" d="M12 .587l3.668 7.431L24 9.748l-6 5.847 1.417 8.266L12 18.896 4.583 23.861 6 15.595 0 9.748l8.332-1.73z"/></svg>';
-                const starOutline = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-outline"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+                    // disable and show spinner while calculating route
+                    btn.disabled = true;
+                    btn.classList.add('loading');
+                    const origHtml = btn.innerHTML;
+                    btn.innerHTML = '<span class="spinner" aria-hidden="true"></span>Calcul...';
 
-                e.currentTarget.innerHTML = this._isFavoriteRoute(shape) ? starFilled : starOutline;
-                // update favorites panel if open
-                this._renderFavoritesPanel();
+                    try {
+                        await this._routeToStop(lat, lng, { dashed: true, profile: 'foot' });
+                    } finally {
+                        btn.disabled = false;
+                        btn.classList.remove('loading');
+                        btn.innerHTML = origHtml;
+                    }
+                });
+            }
+
+            // favorite buttons next to each bus link
+            $panel.querySelectorAll('.fav-route-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const shape = e.currentTarget.dataset.shape;
+                    const shortN = e.currentTarget.dataset.short || '';
+                    const longN = e.currentTarget.dataset.long || '';
+                    const name = (shortN && longN) ? `${shortN} - ${longN}` : (shortN || longN || shape);
+                    this._toggleFavoriteRoute({ shape_id: shape, name });
+
+                    // swap SVG inside the button according to new favorite state
+                    const starFilled = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-filled"><path fill="currentColor" d="M12 .587l3.668 7.431L24 9.748l-6 5.847 1.417 8.266L12 18.896 4.583 23.861 6 15.595 0 9.748l8.332-1.73z"/></svg>';
+                    const starOutline = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" class="star-outline"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+
+                    e.currentTarget.innerHTML = this._isFavoriteRoute(shape) ? starFilled : starOutline;
+                    // update favorites panel if open
+                    this._renderFavoritesPanel();
+                });
             });
         });
-    });
-}
+    }
 
 
-    
+
     // Trace le parcours complet d'une ligne de bus (depuis notre API)
     async drawRoute(shapeId) {
         this.layers.route.clearLayers(); // On efface le trajet précédent
@@ -667,10 +669,10 @@ class Geo {
             if (data.content && data.content.length > 0) {
                 // Transformation des points API en coordonnées Leaflet
                 const points = data.content.map(p => [p.shape_pt_lat, p.shape_pt_lon]);
-                
+
                 // Dessin de la ligne rouge
                 L.polyline(points, { color: 'red', weight: 8, opacity: 0.7 }).addTo(this.layers.route);
-                
+
                 // Icônes de départ et d'arrivée du bus
                 L.marker(points[0], { icon: this.icons.start }).bindPopup('Départ du bus').addTo(this.layers.route);
                 L.marker(points[points.length - 1], { icon: this.icons.end }).bindPopup('Terminus').addTo(this.layers.route);
@@ -713,7 +715,7 @@ class Geo {
         try {
             // 1. Récupérer les ARRÊTS de cette ligne
             const stopsResponse = await fetch(`${this.urlApi}/lignes/${shapeId}`);
-            
+
             if (!stopsResponse.ok) {
                 console.error(`HTTP ${stopsResponse.status}: Ligne ${shapeId} non trouvée`);
                 alert(`❌ Ligne ${shapeId} non trouvée`);
@@ -721,12 +723,12 @@ class Geo {
             }
 
             let stopsData = await stopsResponse.json();
-            
+
             // Vérifier si c'est un objet avec propriété 'content'
             if (stopsData.content && Array.isArray(stopsData.content)) {
                 stopsData = stopsData.content;
             }
-            
+
             // Vérifier que c'est bien un tableau
             if (!Array.isArray(stopsData) || stopsData.length === 0) {
                 console.warn('Aucun arrêt trouvé pour cette ligne');
@@ -738,14 +740,14 @@ class Geo {
 
             // 2. Construire le trajet en reliant tous les arrêts
             const routePoints = stopsData.map(stop => [
-                parseFloat(stop.stop_lat), 
+                parseFloat(stop.stop_lat),
                 parseFloat(stop.stop_lon)
             ]);
 
             // 3. Afficher la polyline (trajet reliant les arrêts)
-            const polyline = L.polyline(routePoints, { 
+            const polyline = L.polyline(routePoints, {
                 color: '#d41c3d',      // Rouge TEC
-                weight: 5, 
+                weight: 5,
                 opacity: 0.8,
                 lineCap: 'round',
                 lineJoin: 'round'
@@ -755,7 +757,7 @@ class Geo {
             L.marker(routePoints[0], { icon: this.icons.start })
                 .bindPopup(`🚌 <strong>Départ</strong><br>${stopsData[0].stop_name}`)
                 .addTo(this.layers.route);
-            
+
             L.marker(routePoints[routePoints.length - 1], { icon: this.icons.end })
                 .bindPopup(`🚌 <strong>Terminus</strong><br>${stopsData[stopsData.length - 1].stop_name}`)
                 .addTo(this.layers.route);
@@ -801,7 +803,7 @@ class Geo {
             console.log(`✅ ${stopsData.length} arrêts affichés sur la carte`);
 
             // 6. Ajuster la vue pour voir toute la ligne
-            this.map.flyToBounds(L.latLngBounds(routePoints), { 
+            this.map.flyToBounds(L.latLngBounds(routePoints), {
                 padding: [50, 50],
                 duration: 0.5
             });
@@ -827,7 +829,7 @@ class Geo {
         }
     }
 
-   
+
 }
 
 export { Geo };

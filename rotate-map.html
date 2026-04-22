@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Carte Leaflet avec Rotation (Pinch-to-Rotate)</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR97kLJNKGbqQvxN1+BLmh3FB1pS9v12wjnMcwf9wtBj/P8vQ=="
+        crossorigin="" />
+    
+    <!-- Leaflet Rotate Plugin CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.css" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        
+        /* UI Controls Overlay */
+        .map-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 999;
+            font-size: 14px;
+            max-width: 300px;
+        }
+        
+        .map-overlay h3 {
+            margin-bottom: 10px;
+            font-size: 16px;
+            color: #333;
+        }
+        
+        .info-group {
+            margin-bottom: 10px;
+            line-height: 1.6;
+            color: #555;
+        }
+        
+        .info-group strong {
+            color: #333;
+        }
+        
+        .rotation-angle {
+            font-size: 18px;
+            font-weight: bold;
+            color: #007bff;
+            text-align: center;
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        /* Compass Control styling (provided by plugin) */
+        .leaflet-control-rotate {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+        }
+        
+        .leaflet-control-rotate a {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            font-size: 18px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        
+        .leaflet-control-rotate a:hover {
+            background: #f0f0f0;
+        }
+        
+        /* Instructions banner */
+        .instructions-banner {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            z-index: 999;
+            max-width: 280px;
+            line-height: 1.5;
+        }
+        
+        /* Mobile instructions */
+        @media (max-width: 768px) {
+            .instructions-banner {
+                font-size: 12px;
+                padding: 10px 12px;
+                max-width: 200px;
+            }
+            
+            .map-overlay {
+                bottom: 10px;
+                left: 10px;
+                padding: 12px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Leaflet Map Container -->
+    <div id="map"></div>
+    
+    <!-- Instructions Banner -->
+    <div class="instructions-banner">
+        📱 <strong>Sur mobile/tablette :</strong> Utilisez deux doigts pour faire pivoter la carte (pinch-rotate)
+    </div>
+    
+    <!-- Info Overlay -->
+    <div class="map-overlay">
+        <h3>ℹ️ Carte Interactive</h3>
+        <div class="info-group">
+            <strong>Centre :</strong><br>
+            Lat: <span id="center-lat">50.46</span>°<br>
+            Lng: <span id="center-lng">4.47</span>°
+        </div>
+        <div class="rotation-angle">
+            🧭 Rotation: <span id="rotation-angle">0</span>°
+        </div>
+        <div class="info-group" style="font-size: 12px; color: #999; margin-top: 12px;">
+            <em>Cliquez sur la boussole (coin haut-droit) pour réinitialiser.</em>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+    
+    <!-- Leaflet Rotate Plugin JS -->
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.min.js"></script>
+
+    <script>
+        /**
+         * Initialisation de la carte Leaflet avec rotation au pincement
+         */
+        
+        // Configuration de la carte
+        const mapConfig = {
+            center: [50.466667, 4.466667], // Bruxelles par défaut
+            zoom: 14,
+            rotate: true,                  // Activer la rotation
+            touchRotate: true,             // Activer la rotation au toucher (pinch)
+            rotateControl: true,           // Afficher le contrôle de rotation (boussole)
+            bearing: 0,                    // Rotation initiale en degrés
+        };
+
+        // Créer une instance de L.Map (et non L.map) pour accéder aux fonctionnalités de rotation
+        const map = new L.Map('map', {
+            center: L.latLng(mapConfig.center[0], mapConfig.center[1]),
+            zoom: mapConfig.zoom,
+            rotate: mapConfig.rotate,
+            touchRotate: mapConfig.touchRotate,
+            bearing: mapConfig.bearing,
+        });
+
+        // Ajouter la couche de tuiles (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19,
+            crossOrigin: true,
+        }).addTo(map);
+
+        // Ajouter le contrôle de rotation (boussole)
+        if (mapConfig.rotateControl) {
+            L.control.rotate({ position: 'topright' }).addTo(map);
+        }
+
+        // Ajouter quelques marqueurs de démonstration
+        const markers = [
+            { lat: 50.466667, lng: 4.466667, name: 'Bruxelles (Centre)' },
+            { lat: 50.508329, lng: 4.464419, name: 'Aéroport de Bruxelles' },
+            { lat: 50.437842, lng: 4.534236, name: 'Waterloo' },
+            { lat: 50.585026, lng: 4.420973, name: 'Louvain-la-Neuve' },
+        ];
+
+        markers.forEach((marker) => {
+            L.marker([marker.lat, marker.lng], {
+                title: marker.name,
+            })
+                .bindPopup(`<strong>${marker.name}</strong>`)
+                .addTo(map);
+        });
+
+        // Mettre à jour l'affichage du centre et de la rotation en temps réel
+        function updateOverlay() {
+            const center = map.getCenter();
+            document.getElementById('center-lat').textContent = center.lat.toFixed(4);
+            document.getElementById('center-lng').textContent = center.lng.toFixed(4);
+            
+            // Afficher l'angle de rotation actuel (si disponible via le plugin)
+            const bearing = map.getBearing ? map.getBearing() : 0;
+            document.getElementById('rotation-angle').textContent = Math.round(bearing);
+        }
+
+        // Mettre à jour lors des changements de vue
+        map.on('move', updateOverlay);
+        map.on('rotate', updateOverlay);
+        map.on('zoomend', updateOverlay);
+
+        // Mise à jour initiale
+        updateOverlay();
+
+        // Logs de diagnostic dans la console
+        console.log('✅ Carte Leaflet initialisée avec rotation');
+        console.log('🔄 Rotation au pincement activée (touchRotate: true)');
+        console.log('🧭 Contrôle de rotation disponible (coin haut-droit)');
+        console.log('📍 Marqueurs de démonstration ajoutés');
+    </script>
+</body>
+</html>

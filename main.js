@@ -12,6 +12,13 @@ import installApp from './inc/install.js'
 //sélection des éléments HTML
 const $mapBox = document.querySelector('#map')
 
+// Configure la rotation Leaflet (doit être fait avant de créer la carte)
+window.LEAFLET_ROTATE_CONFIG = {
+    rotate: true,
+    touchRotate: true,
+    rotateControl: true,
+};
+
 const myGeo = new Geo($mapBox)
 myGeo.init()
 // Gestion du curseur de distance
