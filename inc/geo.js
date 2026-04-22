@@ -1,3 +1,14 @@
+
+/**
+ * =============================================================================
+ * TABLE DES MATIÈRES
+ * =============================================================================
+ * 1. CONSTRUCTEUR & CONFIGURATION ........ Initialisation et état global
+ * 2. GESTION DES ICÔNES .................. Création des marqueurs personnalisés
+
+message.txt
+38 Ko
+﻿
 /**
  * =============================================================================
  * TABLE DES MATIÈRES
@@ -37,12 +48,16 @@ class Geo {
             walking: L.layerGroup(), // Pour le tracé piéton/itinéraire vers un arrêt (solide)
             walkingDotted: L.layerGroup(), // Pour le tracé pointillé (OSRM)
         };
-    this.activeMarker = null; // Pour stocker le marqueur de la position cliquée (si besoin)
+        this.activeMarker = null; // Pour stocker le marqueur de la position cliquée (si besoin)
+
+        // Variables pour le tracking en temps réel
+        this.userMarker = null;        // Marqueur de l'utilisateur sur la carte
+        this.watchId = null;           // ID du watchPosition pour pouvoir l'arrêter
+        this.lastLoadedPosition = null; // Dernière position où on a chargé les arrêts
+        this.loadStopsThreshold = 0.05; // Seuil en km pour recharger les arrêts (50m)
 
     // Favoris (routes/stops) stockés en localStorage
-    this.favorites = this._loadFavorites();
-
-        // Écouteur global pour les lignes de bus (Délégation d'événement)
+    this.favorites = this._loadFavorites();        // Écouteur global pour les lignes de bus (Délégation d'événement)
         // On écoute la zone de la carte : si on clique sur un lien avec la classe 'bus-link', on trace la ligne.
         // Remplace ton ancien écouteur par celui-ci :
         document.addEventListener('click', (e) => {
@@ -218,8 +233,8 @@ class Geo {
             const idx = Number(e.currentTarget.dataset.index);
             const fav = this.favorites[idx];
             if (fav && fav.type === 'route') {
-                // draw the route by shape id using existing drawRoute function if possible
-                if (fav.shape_id) this.drawRoute(fav.shape_id);
+                // draw the route with stops using the new function
+                if (fav.shape_id) this.drawRouteWithStops(fav.shape_id);
             }
         }));
 
@@ -250,6 +265,7 @@ class Geo {
     /**
      * 3. SYSTÈME DE GÉOLOCALISATION
      * Gère la demande d'autorisation et récupère la position de l'utilisateur.
+     * TRACKING EN TEMPS RÉEL : Utilise watchPosition() pour suivre les mouvements.
      */
     async init() {
         try {
@@ -257,18 +273,150 @@ class Geo {
             const result = await navigator.permissions.query({ name: 'geolocation' });
             
             if (result.state === 'granted' || result.state === 'prompt') {
-                // Si autorisé, on demande la position précise au navigateur
+                // Première position avec getCurrentPosition pour créer la carte rapidement
                 navigator.geolocation.getCurrentPosition(
-                    (pos) => this.createMap(pos), // Succès
-                    (err) => this.errorPosition(err), // Erreur
+                    (pos) => {
+                        this.createMap(pos);
+                        // Stocke la première position
+                        this.lastPosition = pos;
+                        // Ensuite, on lance le watching pour les mises à jour en temps réel
+                        this._startWatchingPosition();
+                    },
+                    (err) => {
+                        this.errorPosition(err); // Erreur
+                        // Lance le watching même en cas d'erreur pour une seconde tentative
+                        this._startWatchingPosition();
+                    },
                     this.optionsMap
                 );
             } else {
                 // Si refusé, on utilise la position de secours
                 this._fallbackPosition();
+                // Même en fallback, on lance le watching au cas où l'utilisateur change d'avis
+                this._startWatchingPosition();
             }
         } catch (error) {
             this._fallbackPosition();
+            this._startWatchingPosition();
+        }
+    }
+
+    /**
+     * Lance le tracking en temps réel de la position
+     * Les mises à jour se font automatiquement quand l'utilisateur se déplace
+     */
+    _startWatchingPosition() {
+        // Si un watch est déjà actif, on l'arrête d'abord
+        if (this.watchId !== null) {
+            navigator.geolocation.clearWatch(this.watchId);
+            console.log('Ancien watch arrêté');
+        }
+
+        console.log('Démarrage du tracking en temps réel...');
+
+        // watchPosition appelle le callback à chaque changement de position
+        // avec des options plus agressives pour un suivi plus fluide
+        this.watchId = navigator.geolocation.watchPosition(
+            (pos) => this._updateUserPosition(pos),  // Succès : mise à jour
+            (err) => {
+                console.warn('Erreur de tracking:', err.code, err.message);
+                // On ne relance pas le watch ici pour éviter une boucle infinie
+            },
+            {
+                enableHighAccuracy: true,  // GPS précis
+                timeout: 10000,             // 10 secondes max d'attente
+                maximumAge: 0               // On veut les données les plus fraîches
+            }
+        );
+
+        console.log('Watch ID:', this.watchId);
+    }
+
+    /**
+     * Met à jour la position de l'utilisateur en temps réel
+     * Déplace le marqueur, centre la carte, et recharge les arrêts si nécessaire
+     */
+    _updateUserPosition(position) {
+        this.lastPosition = position;
+
+        const { latitude, longitude } = position.coords;
+        const accuracy = position.coords.accuracy; // Pour debug
+
+        // 1. Créer ou mettre à jour le marqueur utilisateur
+        if (!this.userMarker) {
+            // Première fois : créer le marqueur
+            this.userMarker = L.marker([latitude, longitude], { 
+                icon: this.icons.user,
+                title: 'Ma position'
+            }).addTo(this.map);
+            console.log('Marqueur utilisateur créé', { latitude, longitude, accuracy });
+        } else {
+            // Mise à jour : déplacer le marqueur
+            this.userMarker.setLatLng([latitude, longitude]);
+        }
+
+        // 2. Centrer la carte sur l'utilisateur (avec une petite animation)
+        if (this.map && this.map._container.parentElement) { // Vérifie que la carte existe
+            this.map.panTo([latitude, longitude], { animate: true, duration: 0.5 });
+        }
+
+        // 3. Recharger les arrêts si l'utilisateur s'est déplacé de plus de 50m
+        if (!this.lastLoadedPosition) {
+            // Première fois : charger les arrêts
+            this.loadStops(position);
+            this.lastLoadedPosition = { lat: latitude, lng: longitude };
+            console.log('Premiers arrêts chargés');
+        } else {
+            const distance = this._calculateDistance(
+                this.lastLoadedPosition.lat, 
+                this.lastLoadedPosition.lng, 
+                latitude, 
+                longitude
+            );
+
+            // Si plus de 50m de déplacement : recharger les arrêts
+            if (distance > this.loadStopsThreshold) {
+                this.loadStops(position);
+                this.lastLoadedPosition = { lat: latitude, lng: longitude };
+                console.log(`Arrêts rechargés (déplacement de ${(distance * 1000).toFixed(0)}m)`);
+            }
+        }
+    }
+
+    /**
+     * Calcule la distance entre deux points (en km) - Formule de Haversine
+     */
+    _calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Rayon de la Terre en km
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    /**
+     * Arrête le tracking en temps réel
+     * À appeler si l'utilisateur quitte l'app ou désactive la géolocalisation
+     */
+    stopWatching() {
+        if (this.watchId !== null) {
+            navigator.geolocation.clearWatch(this.watchId);
+            this.watchId = null;
+            console.log('Tracking arrêté');
+        }
+    }
+
+    /**
+     * Cleanup au déchargement de la page
+     */
+    destroy() {
+        this.stopWatching();
+        if (this.map) {
+            this.map.remove();
+            this.map = null;
         }
     }
 
@@ -313,8 +461,8 @@ class Geo {
         this.layers.walking.addTo(this.map);
         this.layers.walkingDotted.addTo(this.map);
 
-        // Marqueur fixe pour notre position initiale
-        L.marker([latitude, longitude], { icon: this.icons.user }).addTo(this.map);
+        // Le marqueur utilisateur sera créé/mis à jour par _updateUserPosition()
+        // On ne le crée pas ici pour éviter les doublons
 
         // On charge les arrêts autour de nous
         this.loadStops(position);
@@ -355,6 +503,9 @@ class Geo {
             const closeBtn = favPanel.querySelector('.cross.close');
             if (closeBtn) closeBtn.addEventListener('click', () => favPanel.classList.add('hidden'));
         }
+
+        // Vérifier si l'URL contient un shape_id et le charger automatiquement
+        this.checkAndLoadRouteFromUrl();
     }
 
     /**
@@ -529,6 +680,150 @@ class Geo {
             }
         } catch (error) {
             console.error("Erreur lors du tracé du trajet :", error);
+        }
+    }
+
+    /**
+     * Extrait le shape_id depuis l'URL
+     * Ex: https://cepegra-frontend.xyz/bootcamp/lignes/C00510081 => C00510081
+     */
+    _extractShapeIdFromUrl() {
+        const url = window.location.href;
+        // On cherche le pattern /lignes/<shape_id> dans l'URL
+        const match = url.match(/\/lignes\/([^/?]+)/);
+        return match ? match[1] : null;
+    }
+
+    /**
+     * Affiche une ligne de bus avec ses arrêts
+     * - Récupère les arrêts directement via GET /lignes/{shapeId}
+     * - Affiche les arrêts avec des CircleMarkers
+     * - Ajoute des tooltips au hover
+     * - Calcule et affiche un trajet connectant tous les arrêts
+     */
+    async drawRouteWithStops(shapeId) {
+        if (!shapeId) {
+            console.warn('Shape ID manquant');
+            return;
+        }
+
+        this.layers.route.clearLayers(); // On efface les données précédentes
+        console.log(`Chargement de la ligne ${shapeId} avec arrêts...`);
+
+        try {
+            // 1. Récupérer les ARRÊTS de cette ligne
+            const stopsResponse = await fetch(`${this.urlApi}/lignes/${shapeId}`);
+            
+            if (!stopsResponse.ok) {
+                console.error(`HTTP ${stopsResponse.status}: Ligne ${shapeId} non trouvée`);
+                alert(`❌ Ligne ${shapeId} non trouvée`);
+                return;
+            }
+
+            let stopsData = await stopsResponse.json();
+            
+            // Vérifier si c'est un objet avec propriété 'content'
+            if (stopsData.content && Array.isArray(stopsData.content)) {
+                stopsData = stopsData.content;
+            }
+            
+            // Vérifier que c'est bien un tableau
+            if (!Array.isArray(stopsData) || stopsData.length === 0) {
+                console.warn('Aucun arrêt trouvé pour cette ligne');
+                alert(`⚠️ Aucun arrêt trouvé pour la ligne ${shapeId}`);
+                return;
+            }
+
+            console.log(`✅ ${stopsData.length} arrêts trouvés`);
+
+            // 2. Construire le trajet en reliant tous les arrêts
+            const routePoints = stopsData.map(stop => [
+                parseFloat(stop.stop_lat), 
+                parseFloat(stop.stop_lon)
+            ]);
+
+            // 3. Afficher la polyline (trajet reliant les arrêts)
+            const polyline = L.polyline(routePoints, { 
+                color: '#d41c3d',      // Rouge TEC
+                weight: 5, 
+                opacity: 0.8,
+                lineCap: 'round',
+                lineJoin: 'round'
+            }).addTo(this.layers.route);
+
+            // 4. Afficher les marqueurs de départ et arrivée
+            L.marker(routePoints[0], { icon: this.icons.start })
+                .bindPopup(`🚌 <strong>Départ</strong><br>${stopsData[0].stop_name}`)
+                .addTo(this.layers.route);
+            
+            L.marker(routePoints[routePoints.length - 1], { icon: this.icons.end })
+                .bindPopup(`🚌 <strong>Terminus</strong><br>${stopsData[stopsData.length - 1].stop_name}`)
+                .addTo(this.layers.route);
+
+            // 5. Afficher TOUS les arrêts avec des CircleMarkers et tooltips
+            stopsData.forEach((stop, index) => {
+                // Vérifier que les coordonnées existent
+                if (!stop.stop_lat || !stop.stop_lon) return;
+
+                const lat = parseFloat(stop.stop_lat);
+                const lon = parseFloat(stop.stop_lon);
+
+                // Créer un CircleMarker (petit cercle)
+                const circleMarker = L.circleMarker(
+                    [lat, lon],
+                    {
+                        radius: 6,                    // Rayon du cercle en pixels
+                        fillColor: '#0066cc',         // Bleu
+                        color: '#ffffff',             // Bordure blanche
+                        weight: 2,                    // Épaisseur de la bordure
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    }
+                ).addTo(this.layers.route);
+
+                // Ajouter une tooltip au hover
+                circleMarker.bindTooltip(
+                    `${index + 1}. ${stop.stop_name}`,
+                    {
+                        permanent: false,             // Apparaît au hover
+                        direction: 'top',             // Au-dessus du marqueur
+                        offset: [0, -10],             // Décalage
+                        className: 'route-stop-tooltip'
+                    }
+                );
+
+                // Ajouter un popup au clic
+                circleMarker.bindPopup(
+                    `<strong>Arrêt #${index + 1}</strong><br><strong>${stop.stop_name}</strong><br><small>Zone: ${stop.zone_id || 'N/A'}</small>`
+                );
+            });
+
+            console.log(`✅ ${stopsData.length} arrêts affichés sur la carte`);
+
+            // 6. Ajuster la vue pour voir toute la ligne
+            this.map.flyToBounds(L.latLngBounds(routePoints), { 
+                padding: [50, 50],
+                duration: 0.5
+            });
+
+        } catch (error) {
+            console.error('Erreur lors du chargement de la ligne avec arrêts:', error);
+            alert(`❌ Erreur: ${error.message}`);
+        }
+    }
+
+    /**
+     * Initialise le chargement automatique si l'URL contient un shape_id
+     * À appeler après la création de la carte
+     */
+    async checkAndLoadRouteFromUrl() {
+        const shapeId = this._extractShapeIdFromUrl();
+        if (shapeId) {
+            console.log(`Shape ID détecté dans l'URL: ${shapeId}`);
+            // Attendre un peu que la carte soit bien initialisée
+            setTimeout(() => {
+                this.drawRouteWithStops(shapeId);
+            }, 500);
         }
     }
 
